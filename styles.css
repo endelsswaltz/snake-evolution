@@ -1,0 +1,54 @@
+:root {
+  --bg-a: #f5f7f0;
+  --bg-b: #d6e8d8;
+  --frame: #213a2b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 20% 20%, var(--bg-a), var(--bg-b));
+  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+}
+
+.app {
+  width: min(96vw, 900px);
+  padding: 12px;
+}
+
+.frame {
+  border: 2px solid var(--frame);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(20, 48, 28, 0.24);
+  background: #0f1e15;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  image-rendering: pixelated;
+}
+
+:fullscreen .frame,
+:-webkit-full-screen .frame {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  border: 0;
+}
+
+:fullscreen #game-canvas,
+:-webkit-full-screen #game-canvas {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+}
