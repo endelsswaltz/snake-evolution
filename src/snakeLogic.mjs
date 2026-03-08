@@ -11,6 +11,7 @@ export const POWER_UP_TYPES = {
   SPEED: 'SPEED',
   SHIELD: 'SHIELD',
   SHRINK: 'SHRINK',
+  WRAP: 'WRAP',
 };
 
 const POWER_UP_ORDER = [
@@ -19,6 +20,7 @@ const POWER_UP_ORDER = [
   POWER_UP_TYPES.SPEED,
   POWER_UP_TYPES.SHIELD,
   POWER_UP_TYPES.SHRINK,
+  POWER_UP_TYPES.WRAP,
 ];
 
 export const SNAKE_FORMS = [
@@ -37,6 +39,7 @@ const DEFAULT_OPTIONS = {
   speedDurationTicks: 20,
   bonusScore: 3,
   shrinkBy: 2,
+  wrapDurationTicks: 30,
 };
 
 function samePos(a, b) {
@@ -120,10 +123,12 @@ export function createInitialState({ rows = 20, cols = 20, rng = Math.random } =
     direction: DIRECTIONS.RIGHT,
     food: spawnFood(rows, cols, snake, rng),
     powerUp: null,
+    projectiles: [],
     effects: {
       slowTicks: 0,
       speedTicks: 0,
       shieldHits: 0,
+      wrapTicks: 0,
     },
     score,
     level: form.level,
@@ -142,6 +147,18 @@ export function setDirection(state, nextDirection) {
   }
 
   return { ...state, direction: nextDirection };
+}
+
+export function fireProjectile(state) {
+  if (state.gameOver) return state;
+  const head = state.snake[0];
+  const newProjectile = {
+    row: head.row + state.direction.row,
+    col: head.col + state.direction.col,
+    direction: { ...state.direction },
+    ttl: 30,
+  };
+  return { ...state, projectiles: [...(state.projectiles || []), newProjectile] };
 }
 
 function applyPowerUp(state, powerUpType, config) {
@@ -171,11 +188,19 @@ function applyPowerUp(state, powerUpType, config) {
     nextSnake = state.snake.slice(0, nextLength);
   }
 
+  if (powerUpType === POWER_UP_TYPES.WRAP) {
+    nextEffects.wrapTicks = config.wrapDurationTicks;
+  }
+
   return {
     nextEffects,
     nextScore,
     nextSnake,
   };
+}
+
+function wrapCoord(value, max) {
+  return ((value % max) + max) % max;
 }
 
 export function tick(state, rng = Math.random, options = DEFAULT_OPTIONS) {
@@ -188,10 +213,11 @@ export function tick(state, rng = Math.random, options = DEFAULT_OPTIONS) {
     slowTicks: Math.max(0, state.effects?.slowTicks ?? 0),
     speedTicks: Math.max(0, state.effects?.speedTicks ?? 0),
     shieldHits: Math.max(0, state.effects?.shieldHits ?? 0),
+    wrapTicks: Math.max(0, state.effects?.wrapTicks ?? 0),
   };
 
   const head = state.snake[0];
-  const nextHead = {
+  let nextHead = {
     row: head.row + state.direction.row,
     col: head.col + state.direction.col,
   };
@@ -202,24 +228,31 @@ export function tick(state, rng = Math.random, options = DEFAULT_OPTIONS) {
     nextHead.col < 0 ||
     nextHead.col >= state.cols;
 
+  if (hitsWall && effects.wrapTicks > 0) {
+    nextHead = {
+      row: wrapCoord(nextHead.row, state.rows),
+      col: wrapCoord(nextHead.col, state.cols),
+    };
+  }
+
+  const actualHitsWall = hitsWall && effects.wrapTicks === 0;
   const willGrow = samePos(nextHead, state.food);
   const hitsBody = state.snake.some((segment) => samePos(segment, nextHead));
 
-  if ((hitsWall || hitsBody) && effects.shieldHits > 0) {
-    const afterShield = {
+  if ((actualHitsWall || hitsBody) && effects.shieldHits > 0) {
+    return {
       ...state,
       effects: {
         ...effects,
         slowTicks: Math.max(0, effects.slowTicks - 1),
         speedTicks: Math.max(0, effects.speedTicks - 1),
+        wrapTicks: Math.max(0, effects.wrapTicks - 1),
         shieldHits: effects.shieldHits - 1,
       },
     };
-
-    return afterShield;
   }
 
-  if (hitsWall || hitsBody) {
+  if (actualHitsWall || hitsBody) {
     return { ...state, gameOver: true };
   }
 
@@ -234,6 +267,7 @@ export function tick(state, rng = Math.random, options = DEFAULT_OPTIONS) {
     ...effects,
     slowTicks: Math.max(0, effects.slowTicks - 1),
     speedTicks: Math.max(0, effects.speedTicks - 1),
+    wrapTicks: Math.max(0, effects.wrapTicks - 1),
   };
 
   if (nextPowerUp && samePos(nextHead, nextPowerUp)) {
@@ -244,7 +278,7 @@ export function tick(state, rng = Math.random, options = DEFAULT_OPTIONS) {
     nextPowerUp = null;
   }
 
-  const nextFood = willGrow
+  let nextFood = willGrow
     ? spawnFood(
       state.rows,
       state.cols,
@@ -258,6 +292,53 @@ export function tick(state, rng = Math.random, options = DEFAULT_OPTIONS) {
     nextPowerUp = spawnPowerUp(state.rows, state.cols, nextSnake, nextFood, rng);
   }
 
+  // Move projectiles
+  const nextProjectiles = [];
+  for (const proj of (state.projectiles || [])) {
+    const newRow = proj.row + proj.direction.row;
+    const newCol = proj.col + proj.direction.col;
+    const newTtl = proj.ttl - 1;
+
+    if (newTtl <= 0) continue;
+
+    const projOutOfBounds =
+      newRow < 0 || newRow >= state.rows || newCol < 0 || newCol >= state.cols;
+
+    if (projOutOfBounds) {
+      if (effects.wrapTicks > 0) {
+        nextProjectiles.push({
+          ...proj,
+          row: wrapCoord(newRow, state.rows),
+          col: wrapCoord(newCol, state.cols),
+          ttl: newTtl,
+        });
+      }
+      continue;
+    }
+
+    const newPos = { row: newRow, col: newCol };
+
+    if (nextFood && samePos(newPos, nextFood)) {
+      nextFood = spawnFood(state.rows, state.cols, nextSnake, nextPowerUp ? [nextPowerUp] : [], rng);
+      continue;
+    }
+
+    if (nextPowerUp && samePos(newPos, nextPowerUp)) {
+      const applied = applyPowerUp(
+        { ...state, snake: nextSnake, effects: nextEffects, score: nextScore },
+        nextPowerUp.type,
+        config,
+      );
+      nextSnake = applied.nextSnake;
+      nextScore = applied.nextScore;
+      nextEffects = applied.nextEffects;
+      nextPowerUp = null;
+      continue;
+    }
+
+    nextProjectiles.push({ ...proj, row: newRow, col: newCol, ttl: newTtl });
+  }
+
   const form = getFormForScore(nextScore);
 
   return {
@@ -268,6 +349,7 @@ export function tick(state, rng = Math.random, options = DEFAULT_OPTIONS) {
     form,
     food: nextFood,
     powerUp: nextPowerUp,
+    projectiles: nextProjectiles,
     effects: nextEffects,
   };
 }
