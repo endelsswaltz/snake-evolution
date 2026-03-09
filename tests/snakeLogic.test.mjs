@@ -121,21 +121,27 @@ test('spawnFood returns null when board is full', () => {
   assert.equal(food, null);
 });
 
-test('spawnPowerUp maps random rolls to all 5 types', () => {
+test('spawnPowerUp maps random rolls to all 8 types', () => {
   const snake = [{ row: 0, col: 0 }];
   const food = { row: 0, col: 1 };
-
-  const p1 = spawnPowerUp(2, 3, snake, food, () => 0.01);
-  const p2 = spawnPowerUp(2, 3, snake, food, () => 0.21);
-  const p3 = spawnPowerUp(2, 3, snake, food, () => 0.41);
-  const p4 = spawnPowerUp(2, 3, snake, food, () => 0.61);
-  const p5 = spawnPowerUp(2, 3, snake, food, () => 0.81);
+  // 8 types: each covers 0.125 of range; use midpoints
+  const p1 = spawnPowerUp(2, 3, snake, food, () => 0.0625);
+  const p2 = spawnPowerUp(2, 3, snake, food, () => 0.1875);
+  const p3 = spawnPowerUp(2, 3, snake, food, () => 0.3125);
+  const p4 = spawnPowerUp(2, 3, snake, food, () => 0.4375);
+  const p5 = spawnPowerUp(2, 3, snake, food, () => 0.5625);
+  const p6 = spawnPowerUp(2, 3, snake, food, () => 0.6875);
+  const p7 = spawnPowerUp(2, 3, snake, food, () => 0.8125);
+  const p8 = spawnPowerUp(2, 3, snake, food, () => 0.9375);
 
   assert.equal(p1.type, POWER_UP_TYPES.SLOW);
   assert.equal(p2.type, POWER_UP_TYPES.BONUS);
   assert.equal(p3.type, POWER_UP_TYPES.SPEED);
   assert.equal(p4.type, POWER_UP_TYPES.SHIELD);
   assert.equal(p5.type, POWER_UP_TYPES.SHRINK);
+  assert.equal(p6.type, POWER_UP_TYPES.WRAP);
+  assert.equal(p7.type, POWER_UP_TYPES.GHOST);
+  assert.equal(p8.type, POWER_UP_TYPES.MAGNET);
 });
 
 test('slow power-up activates slowTicks', () => {
