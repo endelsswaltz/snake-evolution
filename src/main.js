@@ -47,6 +47,46 @@ let rngState    = 1337;
 let automationMode = false;
 let prevState   = state;
 
+// ─── Layout helpers ──────────────────────────────────────────────────────────
+
+function getHudHeight() {
+  return Math.round(Math.min(60, Math.max(46, canvas.width * 0.13)));
+}
+
+// Returns the square game-board rect within the canvas (below the HUD).
+function getBoard() {
+  const hud  = getHudHeight();
+  const avW  = canvas.width;
+  const avH  = canvas.height - hud;
+  const size = Math.min(avW, avH);
+  return {
+    x:    Math.floor((avW - size) / 2),
+    y:    hud + Math.floor((avH - size) / 2),
+    size,
+  };
+}
+
+function getCellSize() {
+  return getBoard().size / config.rows;
+}
+
+function cellCenter(row, col) {
+  const board = getBoard();
+  const cell  = getCellSize();
+  return { x: board.x + col * cell + cell / 2, y: board.y + row * cell + cell / 2 };
+}
+
+function getHudButtons() {
+  const h  = getHudHeight();
+  const bH = Math.min(28, h - 14);
+  const bW = Math.max(52, Math.min(80, canvas.width * 0.15));
+  const y  = Math.round((h - bH) / 2);
+  return [
+    { id: 'pause',   label: 'Pause',   x: canvas.width - bW * 2 - 16, y, w: bW, h: bH },
+    { id: 'restart', label: 'Restart', x: canvas.width - bW - 6,      y, w: bW, h: bH },
+  ];
+}
+
 // ─── Particles ───────────────────────────────────────────────────────────────
 
 let particles = [];
@@ -57,20 +97,17 @@ function spawnParticles(x, y, color, count = 10, speed = 3) {
     const v = speed * (0.6 + Math.random() * 0.8);
     particles.push({
       x, y,
-      vx: Math.cos(angle) * v,
-      vy: Math.sin(angle) * v,
-      life: 1,
-      decay: 0.02 + Math.random() * 0.025,
-      color,
-      radius: 2 + Math.random() * 3,
+      vx: Math.cos(angle) * v, vy: Math.sin(angle) * v,
+      life: 1, decay: 0.02 + Math.random() * 0.025,
+      color, radius: 2 + Math.random() * 3,
     });
   }
 }
 
 function updateParticles() {
   particles = particles.filter((p) => {
-    p.x  += p.vx; p.y  += p.vy;
-    p.vx *= 0.9;  p.vy *= 0.9;
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.9; p.vy *= 0.9;
     p.life -= p.decay;
     return p.life > 0;
   });
@@ -80,9 +117,7 @@ function drawParticles() {
   for (const p of particles) {
     ctx.globalAlpha = p.life;
     ctx.fillStyle   = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius * p.life, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.radius * p.life, 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
 }
@@ -90,15 +125,13 @@ function drawParticles() {
 // ─── Audio ───────────────────────────────────────────────────────────────────
 
 let audioCtx = null;
-
 function getAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
 }
-
 function playTone(freq, dur, type = 'sine', vol = 0.25, delay = 0) {
   try {
-    const ac  = getAudio();
+    const ac = getAudio();
     const osc = ac.createOscillator();
     const g   = ac.createGain();
     osc.connect(g); g.connect(ac.destination);
@@ -110,20 +143,17 @@ function playTone(freq, dur, type = 'sine', vol = 0.25, delay = 0) {
     osc.stop(ac.currentTime + delay + dur);
   } catch (_) {}
 }
-
-function sfxEat()      { playTone(440, 0.08, 'sine',     0.2); playTone(660, 0.08, 'sine', 0.15, 0.07); }
-function sfxPowerUp()  { playTone(520, 0.12, 'sine',     0.2); playTone(780, 0.15, 'sine', 0.18, 0.10); playTone(1040, 0.12, 'sine', 0.12, 0.22); }
-function sfxShoot()    { playTone(300, 0.06, 'sawtooth', 0.1); }
-function sfxGameOver() { playTone(220, 0.18, 'sawtooth', 0.28); playTone(180, 0.18, 'sawtooth', 0.22, 0.16); playTone(130, 0.3,  'sawtooth', 0.18, 0.32); }
-function sfxPortal()   { playTone(800, 0.06, 'sine',     0.15); playTone(400, 0.12, 'sine', 0.12, 0.06); }
+function sfxEat()      { playTone(440,0.08,'sine',0.2); playTone(660,0.08,'sine',0.15,0.07); }
+function sfxPowerUp()  { playTone(520,0.12,'sine',0.2); playTone(780,0.15,'sine',0.18,0.10); playTone(1040,0.12,'sine',0.12,0.22); }
+function sfxShoot()    { playTone(300,0.06,'sawtooth',0.1); }
+function sfxGameOver() { playTone(220,0.18,'sawtooth',0.28); playTone(180,0.18,'sawtooth',0.22,0.16); playTone(130,0.3,'sawtooth',0.18,0.32); }
+function sfxPortal()   { playTone(800,0.06,'sine',0.15); playTone(400,0.12,'sine',0.12,0.06); }
 
 // ─── High Scores ─────────────────────────────────────────────────────────────
 
 function loadHighScores() {
-  try { return JSON.parse(localStorage.getItem('snake-highscores') || '[]'); }
-  catch (_) { return []; }
+  try { return JSON.parse(localStorage.getItem('snake-highscores') || '[]'); } catch (_) { return []; }
 }
-
 function saveHighScore(score) {
   const scores = loadHighScores();
   scores.push(score);
@@ -133,27 +163,11 @@ function saveHighScore(score) {
   return top5;
 }
 
-// ─── HUD buttons ─────────────────────────────────────────────────────────────
-
-const hudButtons = [
-  { id: 'pause',   label: 'Pause',   x: 484, y: 14, w: 74, h: 28 },
-  { id: 'restart', label: 'Restart', x: 568, y: 14, w: 90, h: 28 },
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Game logic ──────────────────────────────────────────────────────────────
 
 function seededRandom() {
   rngState = (rngState * 1664525 + 1013904223) >>> 0;
   return rngState / 4294967296;
-}
-
-function getCellSize() {
-  return Math.min(canvas.width / config.cols, canvas.height / config.rows);
-}
-
-function cellCenter(row, col) {
-  const cell = getCellSize();
-  return { x: col * cell + cell / 2, y: row * cell + cell / 2 };
 }
 
 function getEffectLabel() {
@@ -164,7 +178,7 @@ function getEffectLabel() {
   if (state.effects.slowTicks   > 0) parts.push(`slow:${state.effects.slowTicks}`);
   if (state.effects.speedTicks  > 0) parts.push(`speed:${state.effects.speedTicks}`);
   if (state.effects.shieldHits  > 0) parts.push(`shield:${state.effects.shieldHits}`);
-  return parts.length > 0 ? parts.join('  ') : 'none';
+  return parts.join(' ') || 'none';
 }
 
 function getActiveTickMs() {
@@ -207,9 +221,6 @@ function stepSimulation(ms) {
 }
 
 function handleStateEvents() {
-  const cell = getCellSize();
-
-  // Food eaten
   if (prevState.score !== state.score) {
     sfxEat();
     if (prevState.food) {
@@ -217,16 +228,12 @@ function handleStateEvents() {
       spawnParticles(x, y, '#e74c3c', 12, 4);
     }
   }
-
-  // Power-up collected
   if (prevState.powerUp && !state.powerUp && !state.gameOver) {
     sfxPowerUp();
     const { x, y } = cellCenter(prevState.powerUp.row, prevState.powerUp.col);
     const style = powerUpStyle[prevState.powerUp.type] || { color: '#fff' };
     spawnParticles(x, y, style.color, 16, 5);
   }
-
-  // Portal used (head changed more than 2 cells at once)
   if (prevState.snake.length > 0 && state.snake.length > 0) {
     const ph = prevState.snake[0], nh = state.snake[0];
     if (Math.abs(ph.row - nh.row) + Math.abs(ph.col - nh.col) > 2) {
@@ -235,8 +242,6 @@ function handleStateEvents() {
       spawnParticles(x, y, '#8e44ad', 14, 4);
     }
   }
-
-  // Game over
   if (!prevState.gameOver && state.gameOver) {
     sfxGameOver();
     const head = prevState.snake[0];
@@ -251,336 +256,317 @@ function handleStateEvents() {
 // ─── Drawing ─────────────────────────────────────────────────────────────────
 
 function drawBackground(now) {
-  const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  const board = getBoard();
+
+  // Full canvas fill
+  ctx.fillStyle = '#0d150e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Board gradient
+  const g = ctx.createLinearGradient(board.x, board.y, board.x, board.y + board.size);
   g.addColorStop(0, '#111e13');
   g.addColorStop(1, '#0a130b');
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(board.x, board.y, board.size, board.size);
 
+  // Grid
   const cell = getCellSize();
   ctx.strokeStyle = 'rgba(255,255,255,0.03)';
   ctx.lineWidth = 1;
   for (let r = 0; r <= config.rows; r += 1) {
-    const y = Math.round(r * cell) + 0.5;
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    const y = board.y + Math.round(r * cell) + 0.5;
+    ctx.beginPath(); ctx.moveTo(board.x, y); ctx.lineTo(board.x + board.size, y); ctx.stroke();
   }
   for (let c = 0; c <= config.cols; c += 1) {
-    const x = Math.round(c * cell) + 0.5;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    const x = board.x + Math.round(c * cell) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, board.y); ctx.lineTo(x, board.y + board.size); ctx.stroke();
   }
 
-  // Wrap border pulse
   if (state.effects?.wrapTicks > 0) {
     ctx.strokeStyle = `rgba(26,188,156,${0.4 + 0.3 * Math.sin(now * 0.006)})`;
     ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+    ctx.strokeRect(board.x + 2, board.y + 2, board.size - 4, board.size - 4);
     ctx.lineWidth = 1;
   }
-
-  // Ghost border pulse
   if (state.effects?.ghostTicks > 0) {
     ctx.strokeStyle = `rgba(189,195,199,${0.3 + 0.25 * Math.sin(now * 0.008)})`;
     ctx.lineWidth = 3;
-    ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+    ctx.strokeRect(board.x + 5, board.y + 5, board.size - 10, board.size - 10);
     ctx.lineWidth = 1;
   }
 }
 
 function drawObstacles() {
   const cell = getCellSize();
+  const board = getBoard();
   const r = Math.max(2, cell * 0.12);
   for (const obs of (state.obstacles || [])) {
-    const x = obs.col * cell + 1.5;
-    const y = obs.row * cell + 1.5;
+    const x = board.x + obs.col * cell + 1.5;
+    const y = board.y + obs.row * cell + 1.5;
     const w = cell - 3;
-    const h = cell - 3;
-    const g = ctx.createLinearGradient(x, y, x + w, y + h);
-    g.addColorStop(0, '#5d4037');
-    g.addColorStop(1, '#3e2723');
+    const g = ctx.createLinearGradient(x, y, x + w, y + w);
+    g.addColorStop(0, '#5d4037'); g.addColorStop(1, '#3e2723');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
-    ctx.strokeStyle = '#8d6e63';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, r); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(x, y, w, w, r); ctx.fill();
+    ctx.strokeStyle = '#8d6e63'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x + 0.5, y + 0.5, w - 1, w - 1, r); ctx.stroke();
   }
-  ctx.lineWidth = 1;
 }
 
 function drawPortals(now) {
-  const cell = getCellSize();
-  const portalColors = [
-    ['#8e44ad', '#4a235a'],
-    ['#d35400', '#6e2c00'],
-  ];
+  const cell   = getCellSize();
+  const colors = [['#8e44ad', '#4a235a'], ['#d35400', '#6e2c00']];
   for (let i = 0; i < (state.portals || []).length; i += 1) {
     const portal = state.portals[i];
-    const [colorA, colorB] = portalColors[i % portalColors.length];
+    const [colorA, colorB] = colors[i % colors.length];
     const pulse = 0.85 + 0.15 * Math.sin(now * 0.006 + i);
     const size  = cell * 0.42 * pulse;
-
     for (const side of [portal.a, portal.b]) {
       const { x, y } = cellCenter(side.row, side.col);
-      ctx.shadowColor = colorA;
-      ctx.shadowBlur  = 12 * pulse;
-      ctx.strokeStyle = colorA;
-      ctx.lineWidth   = 3;
+      ctx.shadowColor = colorA; ctx.shadowBlur = 12 * pulse;
+      ctx.strokeStyle = colorA; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = colorB;
-      ctx.lineWidth   = 1.5;
+      ctx.strokeStyle = colorB; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(x, y, size * 0.6, 0, Math.PI * 2); ctx.stroke();
-      ctx.shadowBlur  = 0;
-      ctx.lineWidth   = 1;
+      ctx.shadowBlur = 0; ctx.lineWidth = 1;
     }
   }
 }
 
 function drawFood(now) {
   if (!state.food) return;
-  const cell   = getCellSize();
   const { x, y } = cellCenter(state.food.row, state.food.col);
+  const cell   = getCellSize();
   const pulse  = 0.92 + 0.08 * Math.sin(now * 0.004);
   const radius = cell * 0.36 * pulse;
-
-  // Magnet active: food glows pink
-  if (state.effects?.magnetTicks > 0) {
-    ctx.shadowColor = '#e91e8c';
-    ctx.shadowBlur  = 16;
-  }
-
+  if (state.effects?.magnetTicks > 0) { ctx.shadowColor = '#e91e8c'; ctx.shadowBlur = 16; }
   const glow = ctx.createRadialGradient(x, y, 0, x, y, radius * 2.2);
   glow.addColorStop(0, 'rgba(231,76,60,0.28)'); glow.addColorStop(1, 'rgba(231,76,60,0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath(); ctx.arc(x, y, radius * 2.2, 0, Math.PI * 2); ctx.fill();
-
+  ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, radius * 2.2, 0, Math.PI * 2); ctx.fill();
   const grad = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.3, radius * 0.05, x, y, radius);
   grad.addColorStop(0, '#ff6b5b'); grad.addColorStop(1, '#8e1a10');
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
-
+  ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.42)';
   ctx.beginPath(); ctx.arc(x - radius * 0.28, y - radius * 0.3, radius * 0.22, 0, Math.PI * 2); ctx.fill();
-
   ctx.shadowBlur = 0;
 }
 
 function drawPowerUp(now) {
   if (!state.powerUp) return;
-  const cell   = getCellSize();
   const { x, y } = cellCenter(state.powerUp.row, state.powerUp.col);
-  const pulse  = 0.88 + 0.12 * Math.sin(now * 0.005);
-  const size   = cell * 0.38 * pulse;
-  const style  = powerUpStyle[state.powerUp.type] || { color: '#ecf0f1', bg: '#333', label: '?' };
-
-  ctx.shadowColor = style.color;
-  ctx.shadowBlur  = 14 * pulse;
-
+  const cell  = getCellSize();
+  const pulse = 0.88 + 0.12 * Math.sin(now * 0.005);
+  const size  = cell * 0.38 * pulse;
+  const style = powerUpStyle[state.powerUp.type] || { color: '#ecf0f1', bg: '#333', label: '?' };
+  ctx.shadowColor = style.color; ctx.shadowBlur = 14 * pulse;
   const grad = ctx.createRadialGradient(x - size * 0.2, y - size * 0.2, size * 0.05, x, y, size);
   grad.addColorStop(0, style.color); grad.addColorStop(1, style.bg);
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
-
+  ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.fillStyle  = '#ffffff';
-  ctx.font       = `bold ${Math.floor(size * 1.05)}px "Avenir Next",sans-serif`;
-  ctx.textAlign  = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.floor(size * 1.05)}px "Avenir Next",sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText(style.label, x, y + 1);
-  ctx.textAlign  = 'start';  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
 }
 
-function drawEnemy() {
-  if (!state.enemy) return;
-  const cell  = getCellSize();
-  const r     = Math.max(2, cell * 0.18);
-  const pad   = 1.5;
-  const alpha = state.effects?.ghostTicks > 0 ? 0.4 : 1;
+function drawSnakeBody(snake, headColor, bodyA, bodyB, alpha) {
+  const cell = getCellSize();
+  const board = getBoard();
+  const r    = Math.max(2, cell * 0.18);
+  const pad  = 1.5;
   ctx.globalAlpha = alpha;
-
-  for (let i = state.enemy.snake.length - 1; i >= 0; i -= 1) {
-    const seg = state.enemy.snake[i];
-    const x = seg.col * cell + pad;
-    const y = seg.row * cell + pad;
+  for (let i = snake.length - 1; i >= 1; i -= 1) {
+    const seg = snake[i];
+    const x = board.x + seg.col * cell + pad;
+    const y = board.y + seg.row * cell + pad;
     const w = cell - pad * 2;
-    const h = cell - pad * 2;
-    ctx.fillStyle = i === 0 ? '#c0392b' : (i % 2 === 0 ? '#e74c3c' : '#a93226');
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+    const cA = i % 2 === 0 ? bodyA : bodyB;
+    const cB = i % 2 === 0 ? bodyB : bodyA;
+    const g  = ctx.createLinearGradient(x, y, x + w, y + w);
+    g.addColorStop(0, cA); g.addColorStop(1, cB);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.roundRect(x, y, w, w, r); ctx.fill();
   }
+  const head = snake[0];
+  const hx = board.x + head.col * cell + pad;
+  const hy = board.y + head.row * cell + pad;
+  const hw = cell - pad * 2;
+  const hg = ctx.createLinearGradient(hx, hy, hx + hw, hy + hw);
+  hg.addColorStop(0, headColor); hg.addColorStop(1, bodyA);
+  ctx.fillStyle = hg;
+  ctx.beginPath(); ctx.roundRect(hx, hy, hw, hw, r); ctx.fill();
+  ctx.globalAlpha = 1;
+}
 
-  // Enemy eyes
-  if (state.enemy.snake.length > 0) {
-    const head  = state.enemy.snake[0];
-    const dir   = state.enemy.direction;
-    const eyeR  = Math.max(1.5, cell * 0.09);
-    const eo    = cell * 0.22;
-    const ef    = cell * 0.18;
-    const hcx   = head.col * cell + cell / 2;
-    const hcy   = head.row * cell + cell / 2;
-    let e1, e2;
-    if      (dir.col ===  1) { e1 = { x: hcx + ef, y: hcy - eo }; e2 = { x: hcx + ef, y: hcy + eo }; }
-    else if (dir.col === -1) { e1 = { x: hcx - ef, y: hcy - eo }; e2 = { x: hcx - ef, y: hcy + eo }; }
-    else if (dir.row === -1) { e1 = { x: hcx - eo, y: hcy - ef }; e2 = { x: hcx + eo, y: hcy - ef }; }
-    else                     { e1 = { x: hcx - eo, y: hcy + ef }; e2 = { x: hcx + eo, y: hcy + ef }; }
-    ctx.fillStyle = '#ffe0de';
-    for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = '#1a0000';
-    for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR * 0.52, 0, Math.PI * 2); ctx.fill(); }
-  }
-
+function drawEyes(snake, direction, alpha) {
+  if (!snake.length) return;
+  const cell = getCellSize();
+  const head = snake[0];
+  const eyeR = Math.max(1.5, cell * 0.09);
+  const eo   = cell * 0.22;
+  const ef   = cell * 0.18;
+  const { x: hcx, y: hcy } = cellCenter(head.row, head.col);
+  let e1, e2;
+  if      (direction.col ===  1) { e1 = { x: hcx + ef, y: hcy - eo }; e2 = { x: hcx + ef, y: hcy + eo }; }
+  else if (direction.col === -1) { e1 = { x: hcx - ef, y: hcy - eo }; e2 = { x: hcx - ef, y: hcy + eo }; }
+  else if (direction.row === -1) { e1 = { x: hcx - eo, y: hcy - ef }; e2 = { x: hcx + eo, y: hcy - ef }; }
+  else                           { e1 = { x: hcx - eo, y: hcy + ef }; e2 = { x: hcx + eo, y: hcy + ef }; }
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#e8f5e9';
+  for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#090d09';
+  for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR * 0.52, 0, Math.PI * 2); ctx.fill(); }
   ctx.globalAlpha = 1;
 }
 
 function drawSnake() {
   if (!state.snake.length) return;
-  const cell    = getCellSize();
   const palette = formPalette[state.form?.slug] || formPalette['grass-snake'];
-  const r       = Math.max(2, cell * 0.18);
-  const pad     = 1.5;
   const alpha   = state.effects?.ghostTicks > 0 ? 0.45 : 1;
-  ctx.globalAlpha = alpha;
-
-  for (let i = state.snake.length - 1; i >= 1; i -= 1) {
-    const seg = state.snake[i];
-    const x = seg.col * cell + pad;
-    const y = seg.row * cell + pad;
-    const w = cell - pad * 2;
-    const h = cell - pad * 2;
-    const cA = i % 2 === 0 ? palette.snakeA : palette.snakeB;
-    const cB = i % 2 === 0 ? palette.snakeB : palette.snakeA;
-    const g  = ctx.createLinearGradient(x, y, x + w, y + h);
-    g.addColorStop(0, cA); g.addColorStop(1, cB);
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
-  }
-
-  const head = state.snake[0];
-  const hx = head.col * cell + pad;
-  const hy = head.row * cell + pad;
-  const hw = cell - pad * 2;
-  const hh = cell - pad * 2;
-  const hg = ctx.createLinearGradient(hx, hy, hx + hw, hy + hh);
-  hg.addColorStop(0, palette.head); hg.addColorStop(1, palette.snakeA);
-  ctx.fillStyle = hg;
-  ctx.beginPath(); ctx.roundRect(hx, hy, hw, hh, r); ctx.fill();
-
-  const eyeR = Math.max(1.5, cell * 0.09);
-  const eo   = cell * 0.22;
-  const ef   = cell * 0.18;
-  const hcx  = head.col * cell + cell / 2;
-  const hcy  = head.row * cell + cell / 2;
-  const dir  = state.direction;
-  let e1, e2;
-  if      (dir.col ===  1) { e1 = { x: hcx + ef, y: hcy - eo }; e2 = { x: hcx + ef, y: hcy + eo }; }
-  else if (dir.col === -1) { e1 = { x: hcx - ef, y: hcy - eo }; e2 = { x: hcx - ef, y: hcy + eo }; }
-  else if (dir.row === -1) { e1 = { x: hcx - eo, y: hcy - ef }; e2 = { x: hcx + eo, y: hcy - ef }; }
-  else                     { e1 = { x: hcx - eo, y: hcy + ef }; e2 = { x: hcx + eo, y: hcy + ef }; }
-  ctx.fillStyle = '#e8f5e9';
-  for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR, 0, Math.PI * 2); ctx.fill(); }
-  ctx.fillStyle = '#090d09';
-  for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR * 0.52, 0, Math.PI * 2); ctx.fill(); }
-
-  ctx.globalAlpha = 1;
+  drawSnakeBody(state.snake, palette.head, palette.snakeA, palette.snakeB, alpha);
+  drawEyes(state.snake, state.direction, alpha);
 }
 
-function drawProjectilesList() {
-  const cell = getCellSize();
-  for (const proj of (state.projectiles || [])) {
-    const { x, y } = cellCenter(proj.row, proj.col);
-    const radius    = Math.max(2, cell * 0.16);
-    ctx.globalAlpha = Math.min(1, proj.ttl / 8);
-    ctx.shadowColor = '#f9ca24';
-    ctx.shadowBlur  = 14;
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.4, '#f9ca24'); grad.addColorStop(1, '#e67e22');
-    ctx.fillStyle = grad;
-    ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur  = 0;
+function drawEnemy() {
+  if (!state.enemy) return;
+  const alpha = state.effects?.ghostTicks > 0 ? 0.35 : 1;
+  drawSnakeBody(state.enemy.snake, '#c0392b', '#e74c3c', '#a93226', alpha);
+  // Enemy pupils are red-tinted white
+  if (state.enemy.snake.length > 0) {
+    const cell = getCellSize();
+    const head = state.enemy.snake[0];
+    const eyeR = Math.max(1.5, cell * 0.09);
+    const eo   = cell * 0.22;
+    const ef   = cell * 0.18;
+    const { x: hcx, y: hcy } = cellCenter(head.row, head.col);
+    const dir = state.enemy.direction;
+    let e1, e2;
+    if      (dir.col ===  1) { e1 = { x: hcx + ef, y: hcy - eo }; e2 = { x: hcx + ef, y: hcy + eo }; }
+    else if (dir.col === -1) { e1 = { x: hcx - ef, y: hcy - eo }; e2 = { x: hcx - ef, y: hcy + eo }; }
+    else if (dir.row === -1) { e1 = { x: hcx - eo, y: hcy - ef }; e2 = { x: hcx + eo, y: hcy - ef }; }
+    else                     { e1 = { x: hcx - eo, y: hcy + ef }; e2 = { x: hcx + eo, y: hcy + ef }; }
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ffe0de';
+    for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#1a0000';
+    for (const e of [e1, e2]) { ctx.beginPath(); ctx.arc(e.x, e.y, eyeR * 0.52, 0, Math.PI * 2); ctx.fill(); }
     ctx.globalAlpha = 1;
   }
 }
 
-function drawHud() {
-  ctx.fillStyle = 'rgba(5,14,7,0.9)';
-  ctx.fillRect(0, 0, canvas.width, 58);
-  ctx.fillStyle = '#c8e6c9';
-  ctx.font = '14px "Avenir Next","Trebuchet MS",sans-serif';
-  ctx.fillText(`Score ${state.score}   Level ${state.level}   ${state.form?.name || ''}`, 14, 21);
-  ctx.fillText(`Effect  ${getEffectLabel()}   [Z] shoot  [F] fullscreen`, 14, 43);
+function drawProjectilesList() {
+  for (const proj of (state.projectiles || [])) {
+    const { x, y } = cellCenter(proj.row, proj.col);
+    const cell      = getCellSize();
+    const radius    = Math.max(2, cell * 0.16);
+    ctx.globalAlpha = Math.min(1, proj.ttl / 8);
+    ctx.shadowColor = '#f9ca24'; ctx.shadowBlur = 14;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.4, '#f9ca24'); grad.addColorStop(1, '#e67e22');
+    ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
+  }
+}
 
-  for (const button of hudButtons) {
+function drawHud() {
+  const hud   = getHudHeight();
+  const btns  = getHudButtons();
+  const small = canvas.width < 480;
+  const fs    = Math.max(11, Math.min(15, canvas.width * 0.034));
+
+  ctx.fillStyle = 'rgba(5,14,7,0.92)';
+  ctx.fillRect(0, 0, canvas.width, hud);
+
+  ctx.fillStyle = '#c8e6c9';
+  ctx.font = `${fs}px "Avenir Next","Trebuchet MS",sans-serif`;
+
+  if (small) {
+    const effect = getEffectLabel();
+    ctx.fillText(`Score ${state.score}  Lv${state.level}  ${effect !== 'none' ? effect : ''}`, 10, hud * 0.62);
+  } else {
+    ctx.fillText(`Score ${state.score}   Level ${state.level}   ${state.form?.name || ''}`, 14, hud * 0.38);
+    ctx.fillText(`Effect ${getEffectLabel()}   [Z] shoot  [F] fullscreen`, 14, hud * 0.78);
+  }
+
+  for (const button of btns) {
     const active = button.id === 'pause' && mode === 'paused';
     ctx.fillStyle = active ? 'rgba(145,207,155,0.95)' : 'rgba(225,242,228,0.9)';
     ctx.fillRect(button.x, button.y, button.w, button.h);
-    ctx.strokeStyle = 'rgba(10,28,14,0.5)';
-    ctx.lineWidth   = 1;
+    ctx.strokeStyle = 'rgba(10,28,14,0.5)'; ctx.lineWidth = 1;
     ctx.strokeRect(button.x + 0.5, button.y + 0.5, button.w - 1, button.h - 1);
     ctx.fillStyle = '#0f2413';
-    ctx.font      = '14px "Avenir Next","Trebuchet MS",sans-serif';
-    ctx.fillText(button.label, button.x + 10, button.y + 19);
+    ctx.font = `${Math.max(10, fs - 1)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillText(button.label, button.x + 8, button.y + button.h * 0.68);
   }
 }
 
 function drawOverlay() {
   if (mode === 'running') return;
+  const board = getBoard();
+  const cx    = board.x + board.size / 2;
+  const bfs   = (f) => Math.max(f * 0.5, Math.min(f, board.size * (f / 720)));
 
-  ctx.fillStyle = 'rgba(5,14,7,0.75)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.textAlign  = 'center';
+  ctx.fillStyle = 'rgba(5,14,7,0.78)';
+  ctx.fillRect(board.x, board.y, board.size, board.size);
+  ctx.textAlign = 'center';
 
   if (mode === 'start') {
     ctx.fillStyle = '#e8f5e9';
-    ctx.font      = 'bold 44px "Avenir Next","Trebuchet MS",sans-serif';
-    ctx.fillText('Snake Evolution', canvas.width / 2, canvas.height * 0.28);
+    ctx.font = `bold ${bfs(40)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillText('Snake Evolution', cx, board.y + board.size * 0.22);
 
     ctx.fillStyle = '#81c784';
-    ctx.font      = '15px "Avenir Next","Trebuchet MS",sans-serif';
-    const lines = [
-      'Arrow keys / WASD — move   ·   Z — shoot   ·   Space — pause   ·   R — restart   ·   F — fullscreen',
-      '',
-      'Power-ups:  S Slow  ★ Bonus  » Speed  ◈ Shield  ↕ Shrink  ∞ Wrap through walls  ◌ Ghost  ⊕ Magnet',
-      '',
-      'Portals teleport you across the board  ·  Red snake is an enemy  ·  Brown blocks are obstacles',
-    ];
-    lines.forEach((line, i) => ctx.fillText(line, canvas.width / 2, canvas.height * 0.42 + i * 22));
+    ctx.font = `${bfs(14)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    const lines = canvas.width < 480
+      ? ['Swipe to move  ·  Tap to start', 'Double-tap to shoot']
+      : ['Arrow keys / WASD · Space pause · R restart · F fullscreen · Z shoot',
+         'Power-ups: S Slow  ★ Bonus  » Speed  ◈ Shield  ↕ Shrink  ∞ Wrap  ◌ Ghost  ⊕ Magnet',
+         'Purple rings = portals  ·  Red snake = enemy  ·  Brown blocks = obstacles'];
+    lines.forEach((l, i) => ctx.fillText(l, cx, board.y + board.size * 0.36 + i * bfs(20)));
 
     ctx.fillStyle = '#e8f5e9';
-    ctx.font      = 'bold 22px "Avenir Next","Trebuchet MS",sans-serif';
-    ctx.fillText('Press Enter to start', canvas.width / 2, canvas.height * 0.68);
+    ctx.font = `bold ${bfs(20)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillText(canvas.width < 480 ? 'Tap to start' : 'Press Enter to start', cx, board.y + board.size * 0.62);
 
-    // Show top scores if any
     const scores = loadHighScores();
     if (scores.length > 0) {
       ctx.fillStyle = '#a5d6a7';
-      ctx.font      = '14px "Avenir Next","Trebuchet MS",sans-serif';
-      ctx.fillText('Best scores: ' + scores.slice(0, 5).join('  ·  '), canvas.width / 2, canvas.height * 0.78);
+      ctx.font = `${bfs(13)}px "Avenir Next","Trebuchet MS",sans-serif`;
+      ctx.fillText('Best: ' + scores.slice(0, 5).join('  ·  '), cx, board.y + board.size * 0.74);
     }
 
   } else if (mode === 'paused') {
     ctx.fillStyle = '#e8f5e9';
-    ctx.font      = 'bold 40px "Avenir Next","Trebuchet MS",sans-serif';
-    ctx.fillText('Paused', canvas.width / 2, canvas.height * 0.5);
+    ctx.font = `bold ${bfs(38)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillText('Paused', cx, board.y + board.size * 0.5);
+    ctx.font = `${bfs(15)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillStyle = '#a5d6a7';
+    ctx.fillText(canvas.width < 480 ? 'Tap Pause to resume' : 'Space / tap Pause to resume', cx, board.y + board.size * 0.6);
 
   } else if (mode === 'game-over') {
     ctx.fillStyle = '#e8f5e9';
-    ctx.font      = 'bold 40px "Avenir Next","Trebuchet MS",sans-serif';
-    ctx.fillText('Game Over', canvas.width / 2, canvas.height * 0.36);
+    ctx.font = `bold ${bfs(38)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillText('Game Over', cx, board.y + board.size * 0.3);
 
     ctx.fillStyle = '#a5d6a7';
-    ctx.font      = '22px "Avenir Next","Trebuchet MS",sans-serif';
-    ctx.fillText(`Score  ${state.score}`, canvas.width / 2, canvas.height * 0.46);
+    ctx.font = `${bfs(20)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillText(`Score  ${state.score}`, cx, board.y + board.size * 0.42);
 
     const scores = loadHighScores();
     if (scores.length > 0) {
-      ctx.font      = '16px "Avenir Next","Trebuchet MS",sans-serif';
-      ctx.fillText('Top scores:  ' + scores.join('  ·  '), canvas.width / 2, canvas.height * 0.555);
+      ctx.font = `${bfs(14)}px "Avenir Next","Trebuchet MS",sans-serif`;
+      ctx.fillText('Top: ' + scores.join('  ·  '), cx, board.y + board.size * 0.53);
       if (scores[0] === state.score) {
         ctx.fillStyle = '#f1c40f';
-        ctx.font      = 'bold 17px "Avenir Next","Trebuchet MS",sans-serif';
-        ctx.fillText('★ New best! ★', canvas.width / 2, canvas.height * 0.615);
+        ctx.font = `bold ${bfs(16)}px "Avenir Next","Trebuchet MS",sans-serif`;
+        ctx.fillText('★ New best! ★', cx, board.y + board.size * 0.62);
       }
     }
 
     ctx.fillStyle = '#e8f5e9';
-    ctx.font      = '20px "Avenir Next","Trebuchet MS",sans-serif';
-    ctx.fillText('Press Enter or R to restart', canvas.width / 2, canvas.height * 0.72);
+    ctx.font = `${bfs(18)}px "Avenir Next","Trebuchet MS",sans-serif`;
+    ctx.fillText(canvas.width < 480 ? 'Tap to restart' : 'Press Enter or R', cx, board.y + board.size * 0.74);
   }
 
   ctx.textAlign = 'start';
@@ -612,10 +598,8 @@ function loop(now) {
 }
 
 function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const size = Math.max(320, Math.floor(Math.min(rect.width || 720, window.innerHeight - 24)));
-  canvas.width = size;
-  canvas.height = size;
+  canvas.width  = window.innerWidth  || 720;
+  canvas.height = window.innerHeight || 720;
   render();
 }
 
@@ -631,68 +615,88 @@ window.addEventListener('resize', resizeCanvas);
 
 function handleCanvasPress(clientX, clientY) {
   const rect   = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
+  const scaleX = canvas.width  / rect.width;
   const scaleY = canvas.height / rect.height;
   const x = (clientX - rect.left) * scaleX;
   const y = (clientY - rect.top)  * scaleY;
-  for (const button of hudButtons) {
+
+  for (const button of getHudButtons()) {
     if (x >= button.x && x <= button.x + button.w && y >= button.y && y <= button.y + button.h) {
       if (button.id === 'pause'   && mode !== 'start' && mode !== 'game-over') pauseToggle();
       if (button.id === 'restart') resetGame();
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 canvas.addEventListener('mousedown', (e) => { handleCanvasPress(e.clientX, e.clientY); });
 
-// Touch: tap for buttons, swipe for direction
-let touchStartX = 0, touchStartY = 0;
+// Touch controls: swipe to move, tap to start/restart, double-tap to shoot
+let touchStartX = 0, touchStartY = 0, touchStartTime = 0, lastTapTime = 0;
+
 canvas.addEventListener('touchstart', (e) => {
-  const t = e.touches[0];
-  if (!t) return;
-  touchStartX = t.clientX;
-  touchStartY = t.clientY;
-  handleCanvasPress(t.clientX, t.clientY);
+  const t = e.touches[0]; if (!t) return;
+  touchStartX    = t.clientX;
+  touchStartY    = t.clientY;
+  touchStartTime = Date.now();
 }, { passive: true });
 
 canvas.addEventListener('touchend', (e) => {
-  const t = e.changedTouches[0];
-  if (!t) return;
-  const dx = t.clientX - touchStartX;
-  const dy = t.clientY - touchStartY;
-  if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+  const t = e.changedTouches[0]; if (!t) return;
+
+  // Check HUD button tap first
+  if (handleCanvasPress(t.clientX, t.clientY)) return;
+
+  const dx   = t.clientX - touchStartX;
+  const dy   = t.clientY - touchStartY;
+  const dist = Math.max(Math.abs(dx), Math.abs(dy));
+  const dur  = Date.now() - touchStartTime;
+
+  if (dist < 12 && dur < 300) {
+    // Tap — check for double-tap (shoot)
+    const now = Date.now();
+    if (now - lastTapTime < 320 && mode === 'running') {
+      sfxShoot();
+      state = fireProjectile(state);
+      lastTapTime = 0;
+      return;
+    }
+    lastTapTime = now;
+    // Single tap: start / restart
+    if (mode === 'start' || mode === 'game-over') { resetGame(); return; }
+    return;
+  }
+
+  // Swipe
+  if (dist < 10) return;
   if (Math.abs(dx) > Math.abs(dy)) applyDirection(dx > 0 ? 'RIGHT' : 'LEFT');
   else                              applyDirection(dy > 0 ? 'DOWN'  : 'UP');
 }, { passive: true });
 
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
-  if (['arrowup','arrowdown','arrowleft','arrowright',' ','w','a','s','d','enter','r','f','z'].includes(key)) {
-    e.preventDefault();
-  }
-
+  if (['arrowup','arrowdown','arrowleft','arrowright',' ','w','a','s','d','enter','r','f','z'].includes(key)) e.preventDefault();
   if (key === 'f') { toggleFullscreen().catch(() => {}); return; }
-
   if (key === 'enter') {
     if (mode === 'start' || mode === 'game-over') { resetGame(); return; }
     if (mode === 'paused') { pauseToggle(); return; }
   }
-
   if (key === 'r') { resetGame(); return; }
   if (key === ' ' && mode !== 'start' && mode !== 'game-over') { pauseToggle(); return; }
-
-  if (key === 'z' && mode === 'running') {
-    sfxShoot();
-    state = fireProjectile(state);
-    return;
-  }
-
+  if (key === 'z' && mode === 'running') { sfxShoot(); state = fireProjectile(state); return; }
   if (key === 'arrowup'    || key === 'w') applyDirection('UP');
   if (key === 'arrowdown'  || key === 's') applyDirection('DOWN');
   if (key === 'arrowleft'  || key === 'a') applyDirection('LEFT');
   if (key === 'arrowright' || key === 'd') applyDirection('RIGHT');
 });
+
+// Fullscreen on first interaction (browsers require gesture)
+function requestFS() {
+  document.documentElement.requestFullscreen().then(() => setTimeout(resizeCanvas, 20)).catch(() => {});
+}
+document.addEventListener('keydown',   requestFS, { once: true });
+document.addEventListener('touchstart', requestFS, { once: true });
 
 // ─── Automation API ───────────────────────────────────────────────────────────
 
