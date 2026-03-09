@@ -1,3 +1,4 @@
 node_modules/
 output/
 .codex/
+generate-icons.js

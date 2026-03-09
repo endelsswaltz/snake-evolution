@@ -8,13 +8,24 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
-  min-height: 100vh;
+  padding: 0;
+  height: 100%;
+  /* Fill safe area on iPhone (notch / home bar) */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  background: #111e13;
+  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+}
+
+body {
+  min-height: 100svh; /* small viewport height — avoids the browser chrome gap */
   display: grid;
   place-items: center;
   background: radial-gradient(circle at 20% 20%, var(--bg-a), var(--bg-b));
-  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
 }
 
 .app {
@@ -36,6 +47,29 @@ body {
   height: auto;
   aspect-ratio: 1 / 1;
   image-rendering: pixelated;
+  touch-action: none; /* prevent scroll/zoom while swiping */
+}
+
+/* Standalone PWA / fullscreen — fill entire screen */
+@media (display-mode: standalone) {
+  body {
+    background: #111e13;
+    padding: 0;
+  }
+  .app {
+    width: 100svw;
+    padding: 0;
+  }
+  .frame {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  #game-canvas {
+    width: 100svw;
+    height: 100svh;
+    aspect-ratio: auto;
+  }
 }
 
 :fullscreen .frame,
